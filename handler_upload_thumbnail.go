@@ -10,7 +10,7 @@ import (
 )
 
 func getThumbnailURL(port, videoID, fileExtension string) *string {
-	thumbnailURL := fmt.Sprintf("http://localhost:%s/assets/%s.%s", port, videoID, fileExtension)
+	thumbnailURL := fmt.Sprintf("http://localhost:%s/api/thumbnails/%s.%s", port, videoID, fileExtension)
 	return &thumbnailURL
 }
 
