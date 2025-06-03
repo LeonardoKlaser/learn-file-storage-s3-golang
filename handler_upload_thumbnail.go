@@ -5,13 +5,40 @@ import (
 	"net/http"
 	"io"
 	"log"
+	"strings"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
+	"os"
+	"mime"
+	"errors"
+	"path/filepath"
+	
 )
 
-func getThumbnailURL(port, videoID, fileExtension string) *string {
-	thumbnailURL := fmt.Sprintf("http://localhost:%s/api/thumbnails/%s.%s", port, videoID, fileExtension)
-	return &thumbnailURL
+func getThumbnailURL(root,extension, videoID string) string {
+	path := filepath.Join(root, fmt.Sprintf("%s.%s", videoID, extension))
+	return path
+}
+
+func getFileExtension(contentType string) (string, error) {
+	splited := strings.Split(contentType, "/")
+	if len(splited) < 2 {
+		return "", errors.New("Error to get file extension") 
+	}
+	return splited[1], nil
+}
+
+func ValidateMediaType(media string) error {
+	mediaType, _ , err := mime.ParseMediaType(media)
+	if err != nil{
+		return errors.New("Invalid Media Type")
+	}
+
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		 return errors.New("Invalid Media Type")
+	}
+
+	return nil
 }
 
 func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +75,12 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	contentType := header.Header.Get("Content-Type")
 
+	err = ValidateMediaType(contentType)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error to read media Type: ", err)
+                return
+	}
+
 	b, err := io.ReadAll(file)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Error to read the file", err)
@@ -59,20 +92,36 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Error to get video from database" ,err)
 		return
 	}
-	log.Println(video)
+	log.Println(b)
 	if video.UserID.String() != userID.String(){
 		respondWithError(w, http.StatusUnauthorized, "The authenticated user is not the owner of the video", err)
 		return
 	}
 
-	videoThumb := thumbnail{
-		data : b,
-		mediaType : contentType,
+	extension, err := getFileExtension(contentType)
+	if err != nil{
+		respondWithError(w, http.StatusBadRequest, "Error to get file extension", err)
+                return
 	}
 
-	videoThumbnails[videoID] =  videoThumb
-	video.ThumbnailURL = getThumbnailURL(cfg.port, video.ID.String(), "png")
-	log.Println(video)
+	path := getThumbnailURL(cfg.assetsRoot, extension, videoID.String())
+	URL := fmt.Sprintf("http://localhost:%s/assets/%s.%s", cfg.port, videoID.String(), extension)
+	video.ThumbnailURL = &URL
+	
+	imageFile, err := os.Create(path)
+	if err != nil{
+		respondWithError(w, http.StatusBadRequest, "Error to craete new file with image", err)
+                return
+        }
+	defer imageFile.Close()
+	
+	_, err = io.Copy(imageFile, file)
+
+	if err != nil{
+		respondWithError(w, http.StatusBadRequest, "Error to insert image metadata to assets file", err)
+                return
+        }
+
 	err = cfg.db.UpdateVideo(video)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Error to update Video" ,err)
