@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"io"
 	"log"
+	"encoding/base64"
+	"crypto/rand"
 	"strings"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -80,19 +82,13 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Error to read media Type: ", err)
                 return
 	}
-
-	b, err := io.ReadAll(file)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Error to read the file", err)
-		return
-	}
 	
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil{
 		respondWithError(w, http.StatusBadRequest, "Error to get video from database" ,err)
 		return
 	}
-	log.Println(b)
+	log.Println(file)
 	if video.UserID.String() != userID.String(){
 		respondWithError(w, http.StatusUnauthorized, "The authenticated user is not the owner of the video", err)
 		return
@@ -104,8 +100,12 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
                 return
 	}
 
-	path := getThumbnailURL(cfg.assetsRoot, extension, videoID.String())
-	URL := fmt.Sprintf("http://localhost:%s/assets/%s.%s", cfg.port, videoID.String(), extension)
+	key := make([]byte, 32)
+	rand.Read(key)
+	encodedString := base64.RawURLEncoding.EncodeToString(key)
+
+	path := getThumbnailURL(cfg.assetsRoot, extension, encodedString)
+	URL := fmt.Sprintf("http://localhost:%s/assets/%s.%s", cfg.port, encodedString, extension)
 	video.ThumbnailURL = &URL
 	
 	imageFile, err := os.Create(path)
@@ -113,7 +113,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Error to craete new file with image", err)
                 return
         }
-	defer imageFile.Close()
 	
 	_, err = io.Copy(imageFile, file)
 
