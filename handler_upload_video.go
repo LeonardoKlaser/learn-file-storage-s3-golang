@@ -9,6 +9,8 @@ import (
 	"encoding/base64"
 	"crypto/rand"
 	"fmt"
+	"log"
+	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/utils"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
 	"os"
@@ -80,7 +82,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	f, err := os.CreateTemp("", "tempVideoUploaded.mp4")
+	f, err := os.CreateTemp("", "tempVideoUploaded-*.mp4")
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Error create new temporary file to storage de video",err)
 		return
@@ -95,8 +97,14 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	}
 
 	f.Seek(0, 0)
+	
 
-	fileFromTemporary, err := os.Open(f.Name())
+	fileWithFastStart, err := utils.ProcessVideoForFastStart(f.Name())
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error to generate a fast start video file", err)
+                return
+	}
+	fileFromTemporary, err := os.Open(fileWithFastStart)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Error to get video from temporary file", err)
 		return
@@ -106,7 +114,13 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	key := make([]byte, 32)
 	rand.Read(key)
-	encodedString := base64.RawURLEncoding.EncodeToString(key)
+	log.Println(f.Name())
+	ratio, err := utils.GetVideoAspectRatio(f.Name())
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "error to get the ratio of archive", err)
+		return
+	}
+	encodedString := "/" + ratio + "/" + base64.RawURLEncoding.EncodeToString(key)
 
 	_, err = cfg.s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: &cfg.s3Bucket,
@@ -118,6 +132,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	log.Println(encodedString)
 	newUrl := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, encodedString)
 	video.VideoURL = &newUrl
 
