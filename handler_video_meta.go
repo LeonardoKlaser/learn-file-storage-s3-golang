@@ -95,7 +95,13 @@ func (cfg *apiConfig) handlerVideoGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, video)
+	videoPresigned, err := cfg.DBVideoToSignedVideo(video)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error to generate video pre signed" ,err)
+                return
+	}
+
+	respondWithJSON(w, http.StatusOK, videoPresigned)
 }
 
 func (cfg *apiConfig) handlerVideosRetrieve(w http.ResponseWriter, r *http.Request) {
@@ -116,5 +122,17 @@ func (cfg *apiConfig) handlerVideosRetrieve(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, videos)
+	var videosToReturn []database.Video
+
+	for _, video := range videos {
+		videoPresigned, err := cfg.DBVideoToSignedVideo(video)
+        	if err != nil {
+                	respondWithError(w, http.StatusBadRequest, "Error to generate video pre signed" ,err)
+                	return
+        	}
+		videosToReturn = append(videosToReturn, videoPresigned)
+	}
+
+
+	respondWithJSON(w, http.StatusOK, videosToReturn)
 }

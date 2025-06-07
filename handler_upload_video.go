@@ -55,7 +55,7 @@ func generatePresignedURL(s3Client *s3.Client, bucket, key string, expireTime ti
 }
 
 
-func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error){
+func (cfg *apiConfig) DBVideoToSignedVideo(video database.Video) (database.Video, error){
 
 	splited := strings.Split(*video.VideoURL, ",")
 
@@ -174,21 +174,22 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	log.Println(encodedString)
 	newUrl := fmt.Sprintf("%s,%s.mp4", cfg.s3Bucket, encodedString)
 	video.VideoURL = &newUrl
+	
+	err = cfg.db.UpdateVideo(video)
+        if err != nil {
+                respondWithError(w, http.StatusBadRequest, "Error to update Video" ,err)
+                return
+        }
 
-	videoPresigned, err := cfg.dbVideoToSignedVideo(video)
+
+	videoPresigned, err := cfg.DBVideoToSignedVideo(video)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Error to generate video pre signed" ,err)
                 return
 	}
 
-	err = cfg.db.UpdateVideo(videoPresigned)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Error to update Video" ,err)
-		return
-	}
 
-
-	respondWithJSON(w, http.StatusOK, video)
+	respondWithJSON(w, http.StatusOK, videoPresigned)
 
 
 
