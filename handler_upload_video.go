@@ -4,10 +4,7 @@ import (
 	"net/http"
 	"context"
     	"github.com/aws/aws-sdk-go-v2/aws"
-    	"time"
-	"strings"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 	"io"
 	"encoding/base64"
 	"crypto/rand"
@@ -30,42 +27,6 @@ func validateVideoExtension(media string) error{
 		return errors.New("Invalid media Type")
 	}
 	return nil
-}
-
-
-func generatePresignedURL(s3Client *s3.Client, bucket, key string, expireTime time.Duration) (string, error){
-
-	presignedClient := s3.NewPresignClient(s3Client)
-
-	presignResult, err := presignedClient.PresignGetObject(context.TODO(), &s3.GetObjectInput{
-		Bucket: aws.String(bucket),
-		Key: aws.String(key),
-	}, func(opts *s3.PresignOptions){
-		opts.Expires = expireTime
-	})
-
-	if err != nil {
-		return "", errors.New("error to generate presign url: " + err.Error())
-	}
-
-	log.Println(presignResult.URL)
-
-	return presignResult.URL, nil
-
-}
-
-
-func (cfg *apiConfig) DBVideoToSignedVideo(video database.Video) (database.Video, error){
-
-	splited := strings.Split(*video.VideoURL, ",")
-
-	url, err := generatePresignedURL(cfg.s3Client, splited[0], splited[1], 15*time.Minute)
-	if err != nil {
-		return database.Video{}, errors.New("error to generate signed url")
-	}
-	video.VideoURL = &url
-	return video, err
-
 }
 
 
@@ -159,7 +120,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusBadRequest, "error to get the ratio of archive", err)
 		return
 	}
-	encodedString := ratio + "/" + base64.RawURLEncoding.EncodeToString(key)
+	encodedString := "/" + ratio + "/" + base64.RawURLEncoding.EncodeToString(key)
 
 	_, err = cfg.s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: &cfg.s3Bucket,
@@ -172,7 +133,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	}
 
 	log.Println(encodedString)
-	newUrl := fmt.Sprintf("%s,%s.mp4", cfg.s3Bucket, encodedString)
+	newUrl := fmt.Sprintf("%s%s.mp4", cfg.s3CfDistribution, encodedString)
 	video.VideoURL = &newUrl
 	
 	err = cfg.db.UpdateVideo(video)
@@ -182,14 +143,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
         }
 
 
-	videoPresigned, err := cfg.DBVideoToSignedVideo(video)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Error to generate video pre signed" ,err)
-                return
-	}
-
-
-	respondWithJSON(w, http.StatusOK, videoPresigned)
+	respondWithJSON(w, http.StatusOK, video)
 
 
 
